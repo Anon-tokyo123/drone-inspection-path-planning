@@ -1,149 +1,109 @@
-# drone-inspection-path-planning
-Computer vision and path-planning components developed for an autonomous drone inspection project.
-# Computer Vision-Assisted Drone Inspection & Path Planning
+# Computer Vision-Assisted Drone Inspection and Path Planning
 
-A Python-based prototype combining computer vision processing and A* path planning for autonomous drone inspection.
+An academic prototype exploring two components of a possible drone inspection
+workflow: YOLO-based image/video analysis and A* route planning on a manually
+defined 2D occupancy grid.
 
-## Overview
+## Project status and scope
 
-This project explores the integration of computer vision and path planning for automated drone inspection.
+This was a school project. The team defined the problem and implemented selected
+prototype components, but time and resource limits prevented real-world tests.
+It has not been validated on a real drone, a live inspection site, or operational
+safety data. The vision output is not automatically converted into a flight
+map; the path-planning demo uses manually specified obstacle coordinates.
 
-The repository contains selected implementation components from an academic project, including:
+The repository does not include the original dataset or trained YOLO weights.
+The PPE association and worker tracking methods are simple heuristics and need
+validation against labeled data before they could support safety decisions.
 
-- YOLO-based computer vision processing
-- Object detection and analysis
-- Worker tracking
-- PPE compliance analysis
-- Hazard-zone violation detection
-- 2D occupancy-grid representation
-- A* path planning
-- Route visualization
+## Components
 
-Project-specific datasets, trained model weights, and other restricted materials are not included.
+### Computer vision: `ppe_and_helmet_detection.py`
 
-## System Overview
+Includes helpers for single-image, batch-image, and video inference, annotated
+outputs, class filtering, simple PPE checks, rectangular hazard-zone checks, and
+nearest-centroid worker tracking. The model must be compatible with
+[Ultralytics YOLO](https://docs.ultralytics.com/).
 
-The project consists of two main components:
+### Path planning: `path_finding.py`
 
-1. Computer Vision Pipeline
-2. A* Path Planning
-
-The general workflow is:
-
-Computer Vision → Object Detection → Object Analysis / Obstacle Representation → Occupancy Grid → A* → Planned Route
-
-## Computer Vision Pipeline
-
-The computer vision component uses YOLO for object detection and provides functions for processing images and video.
-
-Key functionality includes:
-
-- Single-image object detection
-- Batch image processing
-- Video inference
-- Bounding-box extraction
-- Detection filtering
-- Worker tracking
-- PPE compliance analysis
-- Hazard-zone violation detection
-
-The detection results are converted into structured information that can be used for downstream analysis.
-
-The original trained model weights and project-specific data are not included in this repository.
-
-## Path Planning
-
-The path-planning component uses the A* search algorithm to calculate a route through a 2D occupancy grid.
-
-The implementation supports:
-
-- 8-directional movement
-- Straight and diagonal movement costs
-- Octile-distance heuristic
-- Obstacle avoidance
-- Diagonal corner-cutting prevention
-- Path reconstruction
-- ASCII-based route visualization
-
-The example uses manually defined obstacle coordinates to demonstrate the path-planning process without requiring project-specific data.
+Creates a 2D binary occupancy grid and runs A* with eight-directional movement,
+straight cost 1, diagonal cost `sqrt(2)`, an octile-distance heuristic, and
+diagonal corner-cutting prevention. Running the file prints a sample route on a
+10 x 10 grid.
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.9 or newer
 - NumPy
 - OpenCV
 - Ultralytics
 
-Install the dependencies with:
+Create an environment and install dependencies:
 
-    pip install -r requirements.txt
+```bash
+python -m venv .venv
+```
+
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
+
+```bash
+# macOS/Linux
+source .venv/bin/activate
+```
+
+```bash
+python -m pip install -r requirements.txt
+```
 
 ## Usage
 
-### Path Planning
+### Run the path-planning example
 
-Run the path-planning example:
+```bash
+python path_finding.py
+```
 
-    python path_planning.py
+The script prints the route and an ASCII grid. Legend: `S` = start, `G` = goal,
+`#` = obstacle, `*` = route, and `.` = free cell.
 
-The program creates a sample 10 x 10 navigation grid and calculates a route from the defined starting position to the destination.
+### Run image detection
 
-The output includes the calculated route and an ASCII visualization.
+Provide your own compatible weights and input image:
 
-### Visualization Legend
+```python
+from ppe_and_helmet_detection import detect_single_image
 
-- S = Start
-- G = Goal
-- # = Obstacle
-- * = Calculated Path
-- . = Free Space
+result = detect_single_image(
+    image_path="path/to/image.jpg",
+    model_path="path/to/model.pt",
+    conf_threshold=0.5,
+)
+print(result)
+```
 
-### Computer Vision
-
-The computer vision pipeline requires a compatible YOLO model.
-
-Example:
-
-    from vision_pipeline import detect_single_image
-
-    results = detect_single_image(
-        image_path="example.jpg",
-        model_path="path/to/model.pt",
-        conf_threshold=0.5
-    )
-
-Model weights and input data used in the original academic project are not included in this repository.
+The model's class names must match the labels expected by helpers such as
+`check_ppe_compliance` (which currently looks for the class name `worker`).
+Function examples are not a substitute for the missing project weights/data.
 
 ## Algorithm
 
-A* selects the next position based on:
+A* prioritizes nodes using `f(n) = g(n) + h(n)`, where `g(n)` is the cost from
+the start and `h(n)` estimates the remaining cost. Octile distance is suitable
+for the eight-direction movement and the straight/diagonal costs used here.
 
-    f(n) = g(n) + h(n)
+## Limitations and next steps
 
-where:
+- Static 2D grid only; no 3D flight dynamics, localization, or flight control.
+- No dynamic obstacle updates or real-time replanning.
+- No tested connection from detections to occupancy-grid cells.
+- No real drone or live-site evaluation was completed.
+- PPE checks and tracking are heuristic prototypes, not safety-certified tools.
 
-- g(n) represents the cost from the starting position
-- h(n) estimates the cost from the current position to the destination
-- f(n) is the total estimated cost
+## Project materials
 
-Because the implementation allows movement in eight directions, an octile-distance heuristic is used.
-
-## Limitations
-
-This implementation represents a prototype of selected components rather than a complete autonomous drone system.
-
-The current path-planning implementation uses a static 2D environment and does not address:
-
-- Dynamic obstacle avoidance
-- Real-time path replanning
-- 3D flight dynamics
-- Flight-controller integration
-- Sensor uncertainty
-
-The computer vision component also depends on compatible YOLO model weights, which are not included in this repository.
-
-## Project Materials
-
-This repository contains selected source code from an academic project.
-
-Original datasets, trained model weights, and other project-specific materials are not included due to confidentiality and usage restrictions.
+Project-specific datasets, trained weights, and restricted academic materials
+are not included.
