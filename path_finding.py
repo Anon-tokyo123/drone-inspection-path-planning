@@ -9,6 +9,8 @@ Original file is located at
 
 import heapq
 import logging
+import math
+from itertools import count
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -45,35 +47,6 @@ def create_occupancy_grid(
 
 # --- 2. PATHFINDING ALGORITHM (A*) ---
 
-class Node:
-    """Represents a position evaluated by the A* algorithm."""
-
-    def __init__(
-        self,
-        position: Tuple[int, int],
-        parent: Optional["Node"] = None
-    ):
-        self.position = position
-        self.parent = parent
-
-        # Cost from start node
-        self.g = 0.0
-
-        # Estimated cost from current node to goal
-        self.h = 0.0
-
-        # Total estimated cost
-        self.f = 0.0
-
-    def __eq__(self, other):
-        if not isinstance(other, Node):
-            return NotImplemented
-        return self.position == other.position
-
-    def __lt__(self, other):
-        return self.f < other.f
-
-
 def get_heuristic(
     current: Tuple[int, int],
     goal: Tuple[int, int]
@@ -87,7 +60,7 @@ def get_heuristic(
     dx = abs(current[0] - goal[0])
     dy = abs(current[1] - goal[1])
 
-    diagonal_cost = 1.414
+    diagonal_cost = math.sqrt(2)
 
     return (
         max(dx, dy)
@@ -128,6 +101,9 @@ def find_shortest_path(
         or None if the goal cannot be reached.
     """
 
+    if not isinstance(grid, np.ndarray) or grid.ndim != 2 or grid.size == 0:
+        raise ValueError("grid must be a non-empty 2D NumPy array.")
+
     # Validate start and goal positions
     if not is_valid_position(grid, start):
         logger.error("Start position is outside the grid.")
@@ -138,145 +114,59 @@ def find_shortest_path(
         return None
 
     # Check whether start or goal is occupied
-    if grid[start[1]][start[0]] == 1:
+    if grid[start[1]][start[0]] != 0:
         logger.error("Start position is blocked by an obstacle.")
         return None
 
-    if grid[goal[1]][goal[0]] == 1:
+    if grid[goal[1]][goal[0]] != 0:
         logger.error("Goal position is blocked by an obstacle.")
         return None
 
-    open_list = []
-    closed_set = set()
-
-    start_node = Node(start)
-    goal_node = Node(goal)
-
-    # Start node has f = g + h
-    start_node.h = get_heuristic(start, goal)
-    start_node.f = start_node.g + start_node.h
-
-    heapq.heappush(open_list, (start_node.f, start_node))
-
-    # 8 possible movement directions
+    # 8 possible movement directions: (dx, dy, step cost)
     movements = [
-        (0, -1),    # Up
-        (0, 1),     # Down
-        (-1, 0),    # Left
-        (1, 0),     # Right
-        (-1, -1),   # Up-left
-        (-1, 1),    # Down-left
-        (1, -1),    # Up-right
-        (1, 1)      # Down-right
+        (0, -1, 1.0), (0, 1, 1.0), (-1, 0, 1.0), (1, 0, 1.0),
+        (-1, -1, math.sqrt(2)), (-1, 1, math.sqrt(2)),
+        (1, -1, math.sqrt(2)), (1, 1, math.sqrt(2)),
     ]
+    tie_breaker = count()
+    open_heap = [(get_heuristic(start, goal), next(tie_breaker), start)]
+    came_from = {}
+    g_score = {start: 0.0}
 
-    while open_list:
-        current_node = heapq.heappop(open_list)[1]
-
-        if current_node.position in closed_set:
-            continue
-
-        closed_set.add(current_node.position)
-
-        # Goal reached
-        if current_node == goal_node:
-            path = []
-            current = current_node
-
-            while current is not None:
-                path.append(current.position)
-                current = current.parent
-
+    while open_heap:
+        _, _, current = heapq.heappop(open_heap)
+        if current == goal:
+            path = [current]
+            while current in came_from:
+                current = came_from[current]
+                path.append(current)
             logger.info("Path found successfully.")
             return path[::-1]
 
-        # Evaluate neighboring positions
-        for move in movements:
-
-            node_position = (
-                current_node.position[0] + move[0],
-                current_node.position[1] + move[1]
-            )
-
-            # Check grid boundaries
-            if not is_valid_position(grid, node_position):
+        current_cost = g_score[current]
+        for dx, dy, movement_cost in movements:
+            neighbor = (current[0] + dx, current[1] + dy)
+            if not is_valid_position(grid, neighbor):
+                continue
+            if grid[neighbor[1], neighbor[0]] != 0:
                 continue
 
-            # Check whether the destination is blocked
-            if grid[node_position[1]][node_position[0]] == 1:
+            # Do not pass diagonally between a blocked orthogonal pair.
+            if dx and dy and (
+                grid[current[1], current[0] + dx] != 0
+                or grid[current[1] + dy, current[0]] != 0
+            ):
                 continue
 
-            # Prevent diagonal corner cutting.
-            # The drone cannot move diagonally between two blocked cells.
-            if move[0] != 0 and move[1] != 0:
-
-                horizontal_position = (
-                    current_node.position[0] + move[0],
-                    current_node.position[1]
-                )
-
-                vertical_position = (
-                    current_node.position[0],
-                    current_node.position[1] + move[1]
-                )
-
-                if (
-                    grid[
-                        horizontal_position[1]
-                    ][horizontal_position[0]] == 1
-                    or
-                    grid[
-                        vertical_position[1]
-                    ][vertical_position[0]] == 1
-                ):
-                    continue
-
-            # Skip positions already evaluated
-            if node_position in closed_set:
+            tentative_cost = current_cost + movement_cost
+            if tentative_cost >= g_score.get(neighbor, math.inf):
                 continue
+            came_from[neighbor] = current
+            g_score[neighbor] = tentative_cost
+            priority = tentative_cost + get_heuristic(neighbor, goal)
+            heapq.heappush(open_heap, (priority, next(tie_breaker), neighbor))
 
-            neighbor = Node(
-                node_position,
-                current_node
-            )
-
-            # Straight movement = 1.0
-            # Diagonal movement = sqrt(2) ≈ 1.414
-            if move[0] != 0 and move[1] != 0:
-                movement_cost = 1.414
-            else:
-                movement_cost = 1.0
-
-            neighbor.g = (
-                current_node.g + movement_cost
-            )
-
-            neighbor.h = get_heuristic(
-                neighbor.position,
-                goal_node.position
-            )
-
-            neighbor.f = neighbor.g + neighbor.h
-
-            # Check whether a better route to this position
-            # already exists in the open list.
-            better_route_exists = any(
-                open_node.position == neighbor.position
-                and open_node.g <= neighbor.g
-                for _, open_node in open_list
-            )
-
-            if better_route_exists:
-                continue
-
-            heapq.heappush(
-                open_list,
-                (neighbor.f, neighbor)
-            )
-
-    logger.warning(
-        "No valid path found. Goal is unreachable."
-    )
+    logger.warning("No valid path found. Goal is unreachable.")
 
     return None
 
